@@ -1,0 +1,82 @@
+name: Deployement Pipeline
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches: [main]
+    types: [opened, synchronize]
+
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Install dependencies Server
+        run: npm run install:server
+
+      - name: Install dependencies Client
+        run: npm run install:client    
+
+      - name: Check style server
+        run: npm run lint:server
+      - name: Check style client
+        run: npm run lint:client  
+
+  test-server:
+    needs: [lint]
+    timeout-minutes: 60
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Install dependencies
+        run: npm run install:server        
+      - name: Test server
+        run: npm run test:server
+        env:
+          TEST_MONGODB_URI: ${{ secrets.TEST_MONGODB_URI }}
+          MONGODB_URI: ${{ secrets.MONGODB_URI }}
+          PORT:  ${{ secrets.PORT }}
+          SECRET:  ${{ secrets.SECRET }}
+
+  test-client:
+    needs: [lint]
+    timeout-minutes: 60
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Install dependencies
+        run: npm run install:client        
+      - name: Test client
+        run: npm run test:client
+        env:
+          TEST_MONGODB_URI: ${{ secrets.TEST_MONGODB_URI }}
+          MONGODB_URI: ${{ secrets.MONGODB_URI }}
+          PORT:  ${{ secrets.PORT }}
+          SECRET:  ${{ secrets.SECRET }}
+
+  deploy:
+    needs: [lint, test-server, test-client]
+    name: Deploy app
+    runs-on: ubuntu-latest
+    concurrency: deploy-group    # optional: ensure only one action runs at a time
+    steps:
+      - uses: actions/checkout@v4
+      - name: Deploy
+        # Only run this step if the branch is main
+        if: github.ref == 'refs/heads/main'
+        env:
+          deploy_url: ${{ secrets.RENDER_DEPLOY_HOOK_URL }}
+        run: |
+          curl "$deploy_url"
